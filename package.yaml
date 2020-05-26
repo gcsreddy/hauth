@@ -1,10 +1,10 @@
 name:                hauth
 version:             0.1.0.0
-github:              "githubuser/hauth"
+github:              "gcsreddy/hauth"
 license:             BSD3
-author:              "Author name here"
-maintainer:          "example@example.com"
-copyright:           "2020 Author name here"
+author:              "Chandra Shekar Reddy Gadipally"
+maintainer:          "gcsr13@gmail.com"
+copyright:           "2020 Chandra Shekar Reddy Gadipally" 
 
 extra-source-files:
 - README.md
@@ -21,6 +21,23 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - base >= 4.7 && < 5
+- data-has
+- aeson
+- classy-prelude 
+- mtl
+- pcre-heavy
+- time 
+- time-lens
+- template-haskell
+
+default-extensions:
+- NoImplicitPrelude
+- OverloadedStrings
+- QuasiQuotes
+- TemplateHaskell
+- ConstraintKinds
+- FlexibleContexts
+
 
 library:
   source-dirs: src

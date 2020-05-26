@@ -1,6 +1,7 @@
 module Adapter.InMemory.Auth where
 
 import ClassyPrelude
+import Control.Monad.Except
 import Data.Has
 import qualified Domain.Auth as D
 
@@ -24,29 +25,108 @@ initialState = State
   }
 type InMemory r m = (Has (TVar State) r, MonadReader r m, MonadIO m)
 
+
 addAuth :: InMemory r m
   => D.Auth -> m (Either D.RegistrationError D.VerificationCode)
-addAuth = undefined
+addAuth auth = do
+  tvar <- asks getter
+  -- gen verification code
+  let vCode = (tshow $ D.authEmail auth) <> "somerandomvcode"
+  atomically . runExceptT $ do
+    state <- lift $ readTVar tvar
+    -- check whether the given email is duplicate
+    let auths = stateAuths state
+        email = D.authEmail auth
+        isDuplicate = any (email ==) . fmap (D.authEmail . snd) $ auths
+    when isDuplicate $ throwError D.RegistrationErrorEmailTaken
+    -- update the state
+    let newUserId = stateUserIdCounter state + 1
+        newAuths = (newUserId, auth) : auths
+        unverifieds = stateUnverifiedEmails state
+        newUnverifieds = insertMap vCode email unverifieds
+        newState = state
+          { stateAuths = newAuths
+          , stateUnverifiedEmails = newUnverifieds
+          , stateUserIdCounter = newUserId
+          }
+    lift $ writeTVar tvar newState
+    return vCode
 
 setEmailAsVerified :: InMemory r m 
   => D.VerificationCode -> m (Either D.EmailVerificationError ())
-setEmailAsVerified = undefined
+setEmailAsVerified vCode = do
+  tvar <- asks getter
+  atomically . runExceptT $ do
+    state <- lift $ readTVar tvar
+    let unverifieds = stateUnverifiedEmails state
+        verifieds = stateVerifiedEmails state
+        mayEmail = lookup vCode unverifieds
+    case mayEmail of
+      Nothing -> throwError D.EmailVerificationErrorInvalidCode
+      Just email -> do
+        let newUnverifieds = deleteMap vCode unverifieds
+            newVerifieds = insertSet email verifieds
+            newState = state
+              { stateUnverifiedEmails = newUnverifieds
+              , stateVerifiedEmails = newVerifieds
+              }
+        lift $ writeTVar tvar newState
+    
 
 findUserByAuth :: InMemory r m
   => D.Auth -> m (Maybe (D.UserId, Bool))
-findUserByAuth = undefined
+findUserByAuth auth = do
+  tvar <- asks getter
+  state <- readTVarIO tvar
+  let mayUserId = fmap fst . find ((auth==) . snd) $ stateAuths state 
+  case mayUserId of
+    Nothing -> return Nothing
+    Just uId -> do
+      let verifiedEmails = stateVerifiedEmails state
+          email = D.authEmail auth
+          isVerified = elem email verifiedEmails
+      return $ Just (uId, isVerified)
+
+
+--for testing only
+getNotificationsForEmail :: InMemory r m
+  => D.Email -> m (Maybe D.VerificationCode)
+getNotificationsForEmail email = do
+  tvar <- asks getter
+  state <- readTVarIO tvar
+  return $ lookup email $ stateNotifications state
 
 findEmailFromUserId :: InMemory r m
   => D.UserId -> m (Maybe D.Email)
-findEmailFromUserId = undefined
+findEmailFromUserId uId = do
+  tvar <- asks getter
+  state <- readTVarIO tvar
+  let mayAuth = fmap snd . find ((uId ==) . fst) $ stateAuths state  
+  return $ D.authEmail <$> mayAuth
 
 notifyEmailVerification :: InMemory r m
   => D.Email -> D.VerificationCode -> m ()
-notifyEmailVerification = undefined
+notifyEmailVerification email vCode = do
+  tvar <- asks getter
+  atomically $ do 
+    state <- readTVar tvar
+    let notifications = stateNotifications state
+        newNotifications = insertMap email vCode notifications
+        newState = state { stateNotifications = newNotifications }
+    writeTVar tvar newState 
 
 newSession :: InMemory r m
   => D.UserId -> m D.SessionId
-newSession uId = undefined
+newSession uId = do
+  tvar <- asks getter
+  sId <- return $ tshow uId <> "randomtexttodo"   
+  atomically $ do
+    state <- readTVar tvar
+    let sessions = stateSessions state
+        newSessions = insertMap sId uId sessions
+        newState = state { stateSessions = newSessions }
+    writeTVar tvar newState
+    return sId
 
 findUserIdBySessionId :: InMemory r m
   => D.SessionId -> m (Maybe D.UserId)

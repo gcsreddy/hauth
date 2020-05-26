@@ -5,6 +5,7 @@ module Lib
 import ClassyPrelude
 import Adapter.InMemory.Auth
 import Domain.Auth
+--import Domain.Play
 import Domain.Validation
 
 someFunc :: IO ()
